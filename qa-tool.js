@@ -11,7 +11,6 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    // 플러그인 복제본 클래스 철저히 무시
     const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
 
@@ -39,15 +38,29 @@
     `;
     document.body.appendChild(tooltip);
 
-    // [핵심 변경] 식별자를 '에러 메시지' 자체로 변경하여 완벽한 단일 그룹화 수행
+    // [수정1] 파일명 기반 식별자(identifier) 복구 및 병합
     const addError = (el, type, msg, textPreview) => {
-        let signature = `${type}_${msg}`;
+        let identifier = '';
+        if (el.tagName === 'IMG') {
+            let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
+            identifier = rawSrc.split('/').pop().split('?')[0] || 'img_no_src';
+            // _pc, _mo 문자열을 제거하여 PC/MO 이미지를 동일한 그룹으로 묶음
+            identifier = identifier.replace(/_pc|_mo/g, ''); 
+        } else if (el.tagName === 'A') {
+            let rawHref = el.getAttribute('href') || el.href || '';
+            identifier = rawHref.split('/').pop().split('?')[0] || el.innerText.trim().substring(0, 15);
+        } else {
+            identifier = el.innerText.trim().substring(0, 15) || el.className;
+        }
+
+        // 식별자를 포함하여 고유 서명 생성
+        let signature = `${type}_${msg}_${identifier}`;
         
         let existingGroup = errors.find(e => e.signature === signature);
         if (existingGroup) {
             if(!existingGroup.els.includes(el)) existingGroup.els.push(el);
         } else {
-            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview });
+            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview || identifier });
         }
 
         el.classList.add('qa-error-mark'); 
@@ -84,8 +97,11 @@
         if (type === 'IMG') {
             let altValue = el.getAttribute('alt');
             let hasValue = altValue && altValue.trim() !== '';
-            if (!hasValue && !el.hasAttribute('alt')) addError(el, 'IMG', 'alt 속성 누락', '이미지');
-            else if (!hasValue) addError(el, 'IMG', 'alt 빈 값', '이미지');
+            let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
+            let filename = rawSrc.split('/').pop().split('?')[0] || '이미지';
+
+            if (!hasValue && !el.hasAttribute('alt')) addError(el, 'IMG', 'alt 속성 누락', filename);
+            else if (!hasValue) addError(el, 'IMG', 'alt 빈 값', filename);
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
@@ -106,7 +122,6 @@
     document.querySelectorAll('a').forEach(el => checkElement(el, 'A'));
     document.querySelectorAll('button').forEach(el => checkElement(el, 'BUTTON'));
 
-    // 크롤링 검수
     if (isSamsungDotCom) {
         document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
             if (li.closest(ignoreQuery)) return;
@@ -153,7 +168,6 @@
         document.querySelectorAll('.pt_bnf__box').forEach(box => {
             if (box.closest(ignoreQuery)) return;
             const ul = box.querySelector('ul.pt_bnf__list');
-            
             if (ul) {
                 let ulMsgs = [];
                 if (!ul.hasAttribute('data-category-name') || ul.getAttribute('data-category-name').trim() === '') ulMsgs.push('data-category-name 누락/빈 값');
@@ -175,8 +189,14 @@
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
+                        // [수정2] 누락 시 li 내부의 모든 이미지에 대해 에러를 기록 (병합은 addError에서 자동으로 처리됨)
                         if (!hasIconImg) {
-                            addError(imgs[0], 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
+                            imgs.forEach(img => {
+                                let rawSrc = img.getAttribute('data-src') || img.getAttribute('src') || img.src || '';
+                                let filename = rawSrc.split('/').pop().split('?')[0] || '아이콘 이미지';
+                                let baseFilename = filename.replace(/_pc|_mo/g, ''); // 텍스트 프리뷰용
+                                addError(img, 'CRAWL', 'type="icon-img" 누락/오류', baseFilename);
+                            });
                         }
                     }
                 });
@@ -232,12 +252,10 @@
         li.onmouseover = () => li.style.backgroundColor = '#f9f9f9';
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
-        // [핵심 변경] 클릭 시 그룹 내 요소를 순차적으로 순회하며 스크롤 및 하이라이트
         li.onclick = () => {
             if (typeof err.clickIndex === 'undefined') err.clickIndex = 0;
-            
             let targetEl = err.els[err.clickIndex % err.els.length];
-            err.clickIndex++; // 다음 클릭 시 그룹 내의 다음 에러 요소로 이동
+            err.clickIndex++; 
 
             let scrollTarget = targetEl;
             const swiperSlide = targetEl.closest('.swiper-slide');
@@ -265,7 +283,7 @@
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
-        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치 - 클릭 시 순환)</span>` : '';
+        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
         
         li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} <br/>${textPreview}`;
         list.appendChild(li);
