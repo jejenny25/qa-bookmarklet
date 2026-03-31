@@ -11,8 +11,7 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    let errorSignatures = new Set(); // 중복 에러 판별용 Set 객체
-    const ignoreSelectors = ['#header__navi', '.btn-gotop'];
+    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate'];
     const ignoreQuery = ignoreSelectors.join(',');
 
     let requiredOmniPrefix = '';
@@ -39,44 +38,34 @@
     `;
     document.body.appendChild(tooltip);
 
-    // 에러 추가 로직 고도화 (중복 방지 적용)
+    // 에러 추가 시 그룹화 로직 적용
     const addError = (el, type, msg, textPreview) => {
-        let isClone = false;
+        let identifier = el.src || el.href || el.innerText.trim().substring(0, 30) || el.className || Math.random().toString();
+        let signature = `${type}_${msg}_${identifier}`;
         
-        // 스와이퍼 컨테이너 내부일 경우에만 시그니처 생성 및 중복 확인
-        if (el.closest('.swiper-wrapper, .swiper-container')) {
-            let identifier = el.src || el.innerText.trim() || el.className;
-            let signature = `${type}_${msg}_${identifier}`;
-            
-            if (errorSignatures.has(signature)) {
-                isClone = true; // 이미 기록된 에러와 완전히 동일한 복제본
-            } else {
-                errorSignatures.add(signature);
-            }
+        let existingGroup = errors.find(e => e.signature === signature);
+        
+        if (existingGroup) {
+            existingGroup.els.push(el);
+        } else {
+            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview });
         }
 
-        // 화면상 테두리는 원본, 복제본 상관없이 모두 마킹
+        // DOM에는 모두 마킹
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
-
-        // 패널 리스트에는 최초 1회(원본)만 추가
-        if (!isClone) {
-            errors.push({ el: el, type: type, msg: msg, text: textPreview });
-        }
     };
 
     const bindTooltip = (el, hasValue, displayValue, typeLabel, colorSuccess, colorFail) => {
         el.addEventListener('mouseenter', () => {
             tooltip.style.backgroundColor = hasValue ? colorSuccess : colorFail; 
             tooltip.innerHTML = `${hasValue ? '✅' : '⚠️'} [${typeLabel}] ${displayValue}`;
-            
             tooltip.style.visibility = 'hidden';
             tooltip.style.display = 'block';
             
             let rect = el.getBoundingClientRect();
             let ttRect = tooltip.getBoundingClientRect();
-            
             let topPos = window.scrollY + rect.top - ttRect.height - 10;
             let leftPos = window.scrollX + rect.left;
 
@@ -99,21 +88,18 @@
             let hasValue = altValue && altValue.trim() !== '';
             if (!hasValue && !el.hasAttribute('alt')) addError(el, 'IMG', 'alt 속성 누락', '이미지');
             else if (!hasValue) addError(el, 'IMG', 'alt 빈 값', '이미지');
-            
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
                 addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
             }
-            
             let omniValue = el.getAttribute('data-omni');
             let hasValue = omniValue && omniValue.trim() !== '';
             
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
                 addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
             }
-
             bindTooltip(el, hasValue, hasValue ? omniValue : '값 없음', 'OMNI', '#1e3799', '#e55039');
         }
     };
@@ -124,6 +110,7 @@
 
     if (isSamsungDotCom) {
         document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
+            if (li.closest(ignoreQuery)) return;
             if (li.getAttribute('data-crawling-type') !== 'event-banner') {
                 addError(li, 'CRAWL', 'type="event-banner" 오류/누락', '배너 영역');
             }
@@ -133,6 +120,7 @@
         const attrDateRegex = /^\d{2}\/\d{2}\/\d{4}$/; 
 
         document.querySelectorAll('.pt_header__date').forEach(dateWrap => {
+            if (dateWrap.closest(ignoreQuery)) return;
             const spans = dateWrap.querySelectorAll('span');
             
             if (spans.length >= 1) {
@@ -177,6 +165,7 @@
         });
 
         document.querySelectorAll('.pt_bnf__box').forEach(box => {
+            if (box.closest(ignoreQuery)) return;
             const ul = box.querySelector('ul.pt_bnf__list');
             if (ul) {
                 let ulMsgs = [];
@@ -184,6 +173,7 @@
                 if (ulMsgs.length > 0) addError(ul, 'CRAWL', ulMsgs.join(', '), '혜택 탭 영역');
 
                 ul.querySelectorAll('li').forEach(li => {
+                    if (li.closest(ignoreQuery)) return;
                     li.querySelectorAll('.pt_bnf__eyebrow').forEach(el => {
                         if (el.getAttribute('data-crawling-type') !== 'eyebrow') addError(el, 'CRAWL', 'type="eyebrow" 누락/오류', el.innerText.substring(0,15));
                     });
@@ -214,7 +204,7 @@
     const panel = document.createElement('div');
     panel.id = 'qa-bookmarklet-panel';
     Object.assign(panel.style, {
-        position: 'fixed', top: '15px', right: '15px', width: '320px', 
+        position: 'fixed', top: '15px', right: '15px', width: '330px', 
         backgroundColor: '#fff', border: '1px solid #ccc',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: '999998', padding: '15px',
         fontFamily: 'sans-serif', fontSize: '13px', color: '#333'
@@ -222,7 +212,8 @@
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;';
-    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (${errors.length}건)</strong>`;
+    const totalEls = errors.reduce((acc, err) => acc + err.els.length, 0);
+    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (유형 ${errors.length}건 / 총 ${totalEls}개)</strong>`;
     
     const btnGroup = document.createElement('div');
     const toggleBtn = document.createElement('button');
@@ -250,18 +241,21 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            let scrollTarget = err.el;
-            const swiperSlide = err.el.closest('.swiper-slide');
+            // 해당 에러로 묶인 요소 중 화면에 보이는(Visible) 요소를 최우선으로 찾음
+            let targetEl = err.els.find(el => (el.offsetWidth > 0 || el.offsetHeight > 0)) || err.els[0];
+            
+            let scrollTarget = targetEl;
+            const swiperSlide = targetEl.closest('.swiper-slide');
             
             if (swiperSlide) {
-                scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
+                scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
+                const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
                 if (swiperInstanceEl && swiperInstanceEl.swiper) {
                     const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
                     if (realIndex !== null) {
                         swiperInstanceEl.swiper.slideToLoop(parseInt(realIndex));
                     } else {
-                        const slides = Array.from(swiperSlide.parentNode.children).filter(el => el.classList.contains('swiper-slide'));
+                        const slides = Array.from(swiperSlide.parentNode.children).filter(el => el.classList.contains('swiper-slide') && !el.classList.contains('swiper-slide-duplicate'));
                         swiperInstanceEl.swiper.slideTo(slides.indexOf(swiperSlide));
                     }
                 }
@@ -269,15 +263,19 @@
 
             scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            const originalOutline = err.el.style.outline;
-            err.el.style.outline = '4px solid blue';
-            setTimeout(() => { err.el.style.outline = originalOutline; }, 1500);
+            // 그룹에 묶인 모든 요소에 하이라이트 효과 적용
+            err.els.forEach(el => {
+                const originalOutline = el.style.outline;
+                el.style.outline = '4px solid blue';
+                setTimeout(() => { el.style.outline = originalOutline; }, 1500);
+            });
         };
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
+        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
         
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${textPreview}`;
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} ${textPreview}`;
         list.appendChild(li);
     });
 
