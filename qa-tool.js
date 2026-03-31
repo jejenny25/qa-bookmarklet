@@ -11,8 +11,7 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    
-    // 스와이퍼 복제본 및 기타 슬라이더 복제본 클래스 강력 차단
+    // 스와이퍼 복제본 완전 차단
     const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
 
@@ -40,8 +39,23 @@
     `;
     document.body.appendChild(tooltip);
 
+    // 에러 추가 시 고유값(src, href 등)을 기준으로 자동 그룹화
     const addError = (el, type, msg, textPreview) => {
-        errors.push({ el: el, type: type, msg: msg, text: textPreview });
+        let identifier = '';
+        if (el.tagName === 'IMG') identifier = el.getAttribute('src') || el.src;
+        else if (el.tagName === 'A') identifier = el.getAttribute('href') || el.href || el.innerText.trim().substring(0, 20);
+        else identifier = el.innerText.trim().substring(0, 20) || el.className;
+        
+        // _pc, _mo 상관없이 중복 에러를 묶기 위한 시그니처
+        let signature = `${type}_${msg}_${identifier}`;
+        
+        let existingGroup = errors.find(e => e.signature === signature);
+        if (existingGroup) {
+            if(!existingGroup.els.includes(el)) existingGroup.els.push(el);
+        } else {
+            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview });
+        }
+
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
@@ -51,13 +65,11 @@
         el.addEventListener('mouseenter', () => {
             tooltip.style.backgroundColor = hasValue ? colorSuccess : colorFail; 
             tooltip.innerHTML = `${hasValue ? '✅' : '⚠️'} [${typeLabel}] ${displayValue}`;
-            
             tooltip.style.visibility = 'hidden';
             tooltip.style.display = 'block';
             
             let rect = el.getBoundingClientRect();
             let ttRect = tooltip.getBoundingClientRect();
-            
             let topPos = window.scrollY + rect.top - ttRect.height - 10;
             let leftPos = window.scrollX + rect.left;
 
@@ -80,21 +92,18 @@
             let hasValue = altValue && altValue.trim() !== '';
             if (!hasValue && !el.hasAttribute('alt')) addError(el, 'IMG', 'alt 속성 누락', '이미지');
             else if (!hasValue) addError(el, 'IMG', 'alt 빈 값', '이미지');
-            
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
                 addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
             }
-            
             let omniValue = el.getAttribute('data-omni');
             let hasValue = omniValue && omniValue.trim() !== '';
             
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
                 addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
             }
-
             bindTooltip(el, hasValue, hasValue ? omniValue : '값 없음', 'OMNI', '#1e3799', '#e55039');
         }
     };
@@ -103,6 +112,7 @@
     document.querySelectorAll('a').forEach(el => checkElement(el, 'A'));
     document.querySelectorAll('button').forEach(el => checkElement(el, 'BUTTON'));
 
+    // 크롤링 검수 실행 (삼성닷컴 조건)
     if (isSamsungDotCom) {
         document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
             if (li.closest(ignoreQuery)) return;
@@ -117,44 +127,31 @@
         document.querySelectorAll('.pt_header__date').forEach(dateWrap => {
             if (dateWrap.closest(ignoreQuery)) return;
             const spans = dateWrap.querySelectorAll('span');
-            
+            // ... (기존 날짜 검증 로직 동일하게 유지)
             if (spans.length >= 1) {
                 const startSpan = spans[0];
                 const startVal = startSpan.getAttribute('data-start-date');
                 const startText = startSpan.innerText.trim();
                 
-                if (!startVal) {
-                    addError(startSpan, 'CRAWL', 'data-start-date 속성 누락', startText || '시작일');
-                } else if (!textDateRegex.test(startText)) {
-                    addError(startSpan, 'CRAWL', '화면 텍스트 날짜 형식 오류 (YYYY.MM.DD 요망)', startText);
-                } else if (!attrDateRegex.test(startVal)) {
-                    addError(startSpan, 'CRAWL', 'data-start-date 속성 형식 오류 (DD/MM/YYYY 요망)', startVal);
-                } else {
+                if (!startVal) addError(startSpan, 'CRAWL', 'data-start-date 속성 누락', startText || '시작일');
+                else if (!textDateRegex.test(startText)) addError(startSpan, 'CRAWL', '화면 텍스트 날짜 형식 오류 (YYYY.MM.DD 요망)', startText);
+                else if (!attrDateRegex.test(startVal)) addError(startSpan, 'CRAWL', 'data-start-date 속성 형식 오류 (DD/MM/YYYY 요망)', startVal);
+                else {
                     const [y, m, d] = startText.split('.');
-                    const expectedAttr = `${d}/${m}/${y}`;
-                    if (startVal !== expectedAttr) {
-                        addError(startSpan, 'CRAWL', `data-start-date 불일치 (기대값: ${expectedAttr})`, startVal);
-                    }
+                    if (startVal !== `${d}/${m}/${y}`) addError(startSpan, 'CRAWL', `data-start-date 불일치 (기대값: ${d}/${m}/${y})`, startVal);
                 }
             }
-            
             if (spans.length >= 2) {
                 const endSpan = spans[1];
                 const endVal = endSpan.getAttribute('data-end-date');
                 const endText = endSpan.innerText.trim();
                 
-                if (!endVal) {
-                    addError(endSpan, 'CRAWL', 'data-end-date 속성 누락', endText || '종료일');
-                } else if (!textDateRegex.test(endText)) {
-                    addError(endSpan, 'CRAWL', '화면 텍스트 날짜 형식 오류 (YYYY.MM.DD 요망)', endText);
-                } else if (!attrDateRegex.test(endVal)) {
-                    addError(endSpan, 'CRAWL', 'data-end-date 속성 형식 오류 (DD/MM/YYYY 요망)', endVal);
-                } else {
+                if (!endVal) addError(endSpan, 'CRAWL', 'data-end-date 속성 누락', endText || '종료일');
+                else if (!textDateRegex.test(endText)) addError(endSpan, 'CRAWL', '화면 텍스트 날짜 형식 오류 (YYYY.MM.DD 요망)', endText);
+                else if (!attrDateRegex.test(endVal)) addError(endSpan, 'CRAWL', 'data-end-date 속성 형식 오류 (DD/MM/YYYY 요망)', endVal);
+                else {
                     const [y, m, d] = endText.split('.');
-                    const expectedAttr = `${d}/${m}/${y}`;
-                    if (endVal !== expectedAttr) {
-                        addError(endSpan, 'CRAWL', `data-end-date 불일치 (기대값: ${expectedAttr})`, endVal);
-                    }
+                    if (endVal !== `${d}/${m}/${y}`) addError(endSpan, 'CRAWL', `data-end-date 불일치 (기대값: ${d}/${m}/${y})`, endVal);
                 }
             }
         });
@@ -180,11 +177,11 @@
                         if (el.getAttribute('data-crawling-type') !== 'middle-disc') addError(el, 'CRAWL', 'type="middle-disc" 누락/오류', el.innerText.substring(0,15));
                     });
                     
-                    // 개선된 이미지 탐색 로직 (m_hide, m_show 등 여러 개일 때 대응)
+                    // 핵심 수정: li 내부의 모든 이미지 수집 후 단 하나라도 조건 충족하면 정상 처리
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
-                        // 이미지들 중 단 하나라도 icon-img 속성을 가지고 있으면 통과
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
+                        // 아무 이미지도 조건을 충족하지 못했을 경우 첫 번째 이미지(주로 PC용)를 대표로 에러 등록
                         if (!hasIconImg) {
                             addError(imgs[0], 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
                         }
@@ -203,10 +200,11 @@
         return;
     }
 
+    // UI 렌더링
     const panel = document.createElement('div');
     panel.id = 'qa-bookmarklet-panel';
     Object.assign(panel.style, {
-        position: 'fixed', top: '15px', right: '15px', width: '320px', 
+        position: 'fixed', top: '15px', right: '15px', width: '330px', 
         backgroundColor: '#fff', border: '1px solid #ccc',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: '999998', padding: '15px',
         fontFamily: 'sans-serif', fontSize: '13px', color: '#333'
@@ -214,7 +212,8 @@
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;';
-    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (${errors.length}건)</strong>`;
+    const totalEls = errors.reduce((acc, err) => acc + err.els.length, 0);
+    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (유형 ${errors.length}건 / 총 ${totalEls}개)</strong>`;
     
     const btnGroup = document.createElement('div');
     const toggleBtn = document.createElement('button');
@@ -242,13 +241,20 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            let scrollTarget = err.el;
-            const swiperSlide = err.el.closest('.swiper-slide');
+            // 1. 현재 화면에 활성화된 스와이퍼 슬라이드 안의 에러를 최우선 타겟으로 설정
+            let activeEl = err.els.find(el => {
+                const slide = el.closest('.swiper-slide');
+                return slide && slide.classList.contains('swiper-slide-active');
+            });
+            let targetEl = activeEl || err.els[0];
             
+            let scrollTarget = targetEl;
+            const swiperSlide = targetEl.closest('.swiper-slide');
+            
+            // 스와이퍼 API 연동
             if (swiperSlide) {
-                // 스와이퍼 구조 붕괴 방지용 포커스 이동
-                scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
+                scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
+                const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
                 if (swiperInstanceEl && swiperInstanceEl.swiper) {
                     const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
                     if (realIndex !== null) {
@@ -260,17 +266,22 @@
                 }
             }
 
+            // 부드러운 스크롤 이동
             scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            const originalOutline = err.el.style.outline;
-            err.el.style.outline = '4px solid blue';
-            setTimeout(() => { err.el.style.outline = originalOutline; }, 1500);
+            // 현재 그룹에 속한 모든 에러 요소 하이라이팅 깜빡임
+            err.els.forEach(el => {
+                const originalOutline = el.style.outline;
+                el.style.outline = '4px solid blue';
+                setTimeout(() => { el.style.outline = originalOutline; }, 1500);
+            });
         };
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
+        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
         
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${textPreview}`;
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} ${textPreview}`;
         list.appendChild(li);
     });
 
