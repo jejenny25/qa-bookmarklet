@@ -38,13 +38,11 @@
     `;
     document.body.appendChild(tooltip);
 
-    // [수정1] 파일명 기반 식별자(identifier) 복구 및 병합
     const addError = (el, type, msg, textPreview) => {
         let identifier = '';
         if (el.tagName === 'IMG') {
             let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
             identifier = rawSrc.split('/').pop().split('?')[0] || 'img_no_src';
-            // _pc, _mo 문자열을 제거하여 PC/MO 이미지를 동일한 그룹으로 묶음
             identifier = identifier.replace(/_pc|_mo/g, ''); 
         } else if (el.tagName === 'A') {
             let rawHref = el.getAttribute('href') || el.href || '';
@@ -53,7 +51,6 @@
             identifier = el.innerText.trim().substring(0, 15) || el.className;
         }
 
-        // 식별자를 포함하여 고유 서명 생성
         let signature = `${type}_${msg}_${identifier}`;
         
         let existingGroup = errors.find(e => e.signature === signature);
@@ -189,14 +186,13 @@
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
-                        // [수정2] 누락 시 li 내부의 모든 이미지에 대해 에러를 기록 (병합은 addError에서 자동으로 처리됨)
+                        // [핵심 변경] 속성이 하나도 없을 경우, 대표로 0번째 이미지 하나에만 에러를 추가하여 중복 카운팅 방지
                         if (!hasIconImg) {
-                            imgs.forEach(img => {
-                                let rawSrc = img.getAttribute('data-src') || img.getAttribute('src') || img.src || '';
-                                let filename = rawSrc.split('/').pop().split('?')[0] || '아이콘 이미지';
-                                let baseFilename = filename.replace(/_pc|_mo/g, ''); // 텍스트 프리뷰용
-                                addError(img, 'CRAWL', 'type="icon-img" 누락/오류', baseFilename);
-                            });
+                            let img = imgs[0];
+                            let rawSrc = img.getAttribute('data-src') || img.getAttribute('src') || img.src || '';
+                            let filename = rawSrc.split('/').pop().split('?')[0] || '아이콘 이미지';
+                            let baseFilename = filename.replace(/_pc|_mo/g, ''); 
+                            addError(img, 'CRAWL', 'type="icon-img" 누락/오류', baseFilename);
                         }
                     }
                 });
