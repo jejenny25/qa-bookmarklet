@@ -11,7 +11,7 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    // 플러그인 복제본 클래스 무시
+    // 플러그인 복제본 클래스 철저히 무시
     const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
 
@@ -39,21 +39,9 @@
     `;
     document.body.appendChild(tooltip);
 
-    // [핵심 변경] 파일명 추출 기반의 강력한 에러 그룹화
+    // [핵심 변경] 식별자를 '에러 메시지' 자체로 변경하여 완벽한 단일 그룹화 수행
     const addError = (el, type, msg, textPreview) => {
-        let identifier = '';
-        if (el.tagName === 'IMG') {
-            let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
-            // URL에서 순수 파일명만 추출하여 식별자로 사용 (예: "icon_mo.png")
-            identifier = rawSrc.split('/').pop().split('?')[0] || 'img_no_src'; 
-        } else if (el.tagName === 'A') {
-            let rawHref = el.getAttribute('href') || el.href || '';
-            identifier = rawHref.split('/').pop().split('?')[0] || el.innerText.trim().substring(0, 15);
-        } else {
-            identifier = el.innerText.trim().substring(0, 15) || el.className;
-        }
-        
-        let signature = `${type}_${msg}_${identifier}`;
+        let signature = `${type}_${msg}`;
         
         let existingGroup = errors.find(e => e.signature === signature);
         if (existingGroup) {
@@ -187,7 +175,6 @@
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
-                        // li 내부 이미지 중 단 하나도 조건에 부합하지 않으면 대표로 첫번째(또는 보이는) 이미지에 에러 부여
                         if (!hasIconImg) {
                             addError(imgs[0], 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
                         }
@@ -245,13 +232,13 @@
         li.onmouseover = () => li.style.backgroundColor = '#f9f9f9';
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
+        // [핵심 변경] 클릭 시 그룹 내 요소를 순차적으로 순회하며 스크롤 및 하이라이트
         li.onclick = () => {
-            let activeEl = err.els.find(el => {
-                const slide = el.closest('.swiper-slide');
-                return slide && slide.classList.contains('swiper-slide-active');
-            });
-            let targetEl = activeEl || err.els[0];
+            if (typeof err.clickIndex === 'undefined') err.clickIndex = 0;
             
+            let targetEl = err.els[err.clickIndex % err.els.length];
+            err.clickIndex++; // 다음 클릭 시 그룹 내의 다음 에러 요소로 이동
+
             let scrollTarget = targetEl;
             const swiperSlide = targetEl.closest('.swiper-slide');
             
@@ -271,18 +258,16 @@
 
             scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            err.els.forEach(el => {
-                const originalOutline = el.style.outline;
-                el.style.outline = '4px solid blue';
-                setTimeout(() => { el.style.outline = originalOutline; }, 1500);
-            });
+            const originalOutline = targetEl.style.outline;
+            targetEl.style.outline = '4px solid blue';
+            setTimeout(() => { targetEl.style.outline = originalOutline; }, 1500);
         };
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
-        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
+        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치 - 클릭 시 순환)</span>` : '';
         
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} ${textPreview}`;
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} <br/>${textPreview}`;
         list.appendChild(li);
     });
 
