@@ -11,7 +11,7 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    // 스와이퍼 복제본 완전 차단
+    // 플러그인 복제본 클래스 무시
     const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
 
@@ -39,14 +39,20 @@
     `;
     document.body.appendChild(tooltip);
 
-    // 에러 추가 시 고유값(src, href 등)을 기준으로 자동 그룹화
+    // [핵심 변경] 파일명 추출 기반의 강력한 에러 그룹화
     const addError = (el, type, msg, textPreview) => {
         let identifier = '';
-        if (el.tagName === 'IMG') identifier = el.getAttribute('src') || el.src;
-        else if (el.tagName === 'A') identifier = el.getAttribute('href') || el.href || el.innerText.trim().substring(0, 20);
-        else identifier = el.innerText.trim().substring(0, 20) || el.className;
+        if (el.tagName === 'IMG') {
+            let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
+            // URL에서 순수 파일명만 추출하여 식별자로 사용 (예: "icon_mo.png")
+            identifier = rawSrc.split('/').pop().split('?')[0] || 'img_no_src'; 
+        } else if (el.tagName === 'A') {
+            let rawHref = el.getAttribute('href') || el.href || '';
+            identifier = rawHref.split('/').pop().split('?')[0] || el.innerText.trim().substring(0, 15);
+        } else {
+            identifier = el.innerText.trim().substring(0, 15) || el.className;
+        }
         
-        // _pc, _mo 상관없이 중복 에러를 묶기 위한 시그니처
         let signature = `${type}_${msg}_${identifier}`;
         
         let existingGroup = errors.find(e => e.signature === signature);
@@ -112,7 +118,7 @@
     document.querySelectorAll('a').forEach(el => checkElement(el, 'A'));
     document.querySelectorAll('button').forEach(el => checkElement(el, 'BUTTON'));
 
-    // 크롤링 검수 실행 (삼성닷컴 조건)
+    // 크롤링 검수
     if (isSamsungDotCom) {
         document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
             if (li.closest(ignoreQuery)) return;
@@ -127,7 +133,7 @@
         document.querySelectorAll('.pt_header__date').forEach(dateWrap => {
             if (dateWrap.closest(ignoreQuery)) return;
             const spans = dateWrap.querySelectorAll('span');
-            // ... (기존 날짜 검증 로직 동일하게 유지)
+            
             if (spans.length >= 1) {
                 const startSpan = spans[0];
                 const startVal = startSpan.getAttribute('data-start-date');
@@ -159,6 +165,7 @@
         document.querySelectorAll('.pt_bnf__box').forEach(box => {
             if (box.closest(ignoreQuery)) return;
             const ul = box.querySelector('ul.pt_bnf__list');
+            
             if (ul) {
                 let ulMsgs = [];
                 if (!ul.hasAttribute('data-category-name') || ul.getAttribute('data-category-name').trim() === '') ulMsgs.push('data-category-name 누락/빈 값');
@@ -177,11 +184,10 @@
                         if (el.getAttribute('data-crawling-type') !== 'middle-disc') addError(el, 'CRAWL', 'type="middle-disc" 누락/오류', el.innerText.substring(0,15));
                     });
                     
-                    // 핵심 수정: li 내부의 모든 이미지 수집 후 단 하나라도 조건 충족하면 정상 처리
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
-                        // 아무 이미지도 조건을 충족하지 못했을 경우 첫 번째 이미지(주로 PC용)를 대표로 에러 등록
+                        // li 내부 이미지 중 단 하나도 조건에 부합하지 않으면 대표로 첫번째(또는 보이는) 이미지에 에러 부여
                         if (!hasIconImg) {
                             addError(imgs[0], 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
                         }
@@ -200,7 +206,6 @@
         return;
     }
 
-    // UI 렌더링
     const panel = document.createElement('div');
     panel.id = 'qa-bookmarklet-panel';
     Object.assign(panel.style, {
@@ -241,7 +246,6 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            // 1. 현재 화면에 활성화된 스와이퍼 슬라이드 안의 에러를 최우선 타겟으로 설정
             let activeEl = err.els.find(el => {
                 const slide = el.closest('.swiper-slide');
                 return slide && slide.classList.contains('swiper-slide-active');
@@ -251,7 +255,6 @@
             let scrollTarget = targetEl;
             const swiperSlide = targetEl.closest('.swiper-slide');
             
-            // 스와이퍼 API 연동
             if (swiperSlide) {
                 scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
                 const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
@@ -266,10 +269,8 @@
                 }
             }
 
-            // 부드러운 스크롤 이동
             scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // 현재 그룹에 속한 모든 에러 요소 하이라이팅 깜빡임
             err.els.forEach(el => {
                 const originalOutline = el.style.outline;
                 el.style.outline = '4px solid blue';
