@@ -11,7 +11,9 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate'];
+    
+    // 스와이퍼 복제본 및 기타 슬라이더 복제본 클래스 강력 차단
+    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
 
     let requiredOmniPrefix = '';
@@ -38,20 +40,8 @@
     `;
     document.body.appendChild(tooltip);
 
-    // 에러 추가 시 그룹화 로직 적용
     const addError = (el, type, msg, textPreview) => {
-        let identifier = el.src || el.href || el.innerText.trim().substring(0, 30) || el.className || Math.random().toString();
-        let signature = `${type}_${msg}_${identifier}`;
-        
-        let existingGroup = errors.find(e => e.signature === signature);
-        
-        if (existingGroup) {
-            existingGroup.els.push(el);
-        } else {
-            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview });
-        }
-
-        // DOM에는 모두 마킹
+        errors.push({ el: el, type: type, msg: msg, text: textPreview });
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
@@ -61,11 +51,13 @@
         el.addEventListener('mouseenter', () => {
             tooltip.style.backgroundColor = hasValue ? colorSuccess : colorFail; 
             tooltip.innerHTML = `${hasValue ? '✅' : '⚠️'} [${typeLabel}] ${displayValue}`;
+            
             tooltip.style.visibility = 'hidden';
             tooltip.style.display = 'block';
             
             let rect = el.getBoundingClientRect();
             let ttRect = tooltip.getBoundingClientRect();
+            
             let topPos = window.scrollY + rect.top - ttRect.height - 10;
             let leftPos = window.scrollX + rect.left;
 
@@ -88,18 +80,21 @@
             let hasValue = altValue && altValue.trim() !== '';
             if (!hasValue && !el.hasAttribute('alt')) addError(el, 'IMG', 'alt 속성 누락', '이미지');
             else if (!hasValue) addError(el, 'IMG', 'alt 빈 값', '이미지');
+            
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
                 addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
             }
+            
             let omniValue = el.getAttribute('data-omni');
             let hasValue = omniValue && omniValue.trim() !== '';
             
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
                 addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
             }
+
             bindTooltip(el, hasValue, hasValue ? omniValue : '값 없음', 'OMNI', '#1e3799', '#e55039');
         }
     };
@@ -174,6 +169,7 @@
 
                 ul.querySelectorAll('li').forEach(li => {
                     if (li.closest(ignoreQuery)) return;
+                    
                     li.querySelectorAll('.pt_bnf__eyebrow').forEach(el => {
                         if (el.getAttribute('data-crawling-type') !== 'eyebrow') addError(el, 'CRAWL', 'type="eyebrow" 누락/오류', el.innerText.substring(0,15));
                     });
@@ -183,9 +179,15 @@
                     li.querySelectorAll('.pt_bnf__disc').forEach(el => {
                         if (el.getAttribute('data-crawling-type') !== 'middle-disc') addError(el, 'CRAWL', 'type="middle-disc" 누락/오류', el.innerText.substring(0,15));
                     });
-                    const firstImg = li.querySelector('img');
-                    if (firstImg && firstImg.getAttribute('data-crawling-type') !== 'icon-img') {
-                        addError(firstImg, 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
+                    
+                    // 개선된 이미지 탐색 로직 (m_hide, m_show 등 여러 개일 때 대응)
+                    const imgs = li.querySelectorAll('img');
+                    if (imgs.length > 0) {
+                        // 이미지들 중 단 하나라도 icon-img 속성을 가지고 있으면 통과
+                        const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
+                        if (!hasIconImg) {
+                            addError(imgs[0], 'CRAWL', '이미지 type="icon-img" 누락/오류', '아이콘 이미지');
+                        }
                     }
                 });
             } else {
@@ -204,7 +206,7 @@
     const panel = document.createElement('div');
     panel.id = 'qa-bookmarklet-panel';
     Object.assign(panel.style, {
-        position: 'fixed', top: '15px', right: '15px', width: '330px', 
+        position: 'fixed', top: '15px', right: '15px', width: '320px', 
         backgroundColor: '#fff', border: '1px solid #ccc',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: '999998', padding: '15px',
         fontFamily: 'sans-serif', fontSize: '13px', color: '#333'
@@ -212,8 +214,7 @@
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;';
-    const totalEls = errors.reduce((acc, err) => acc + err.els.length, 0);
-    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (유형 ${errors.length}건 / 총 ${totalEls}개)</strong>`;
+    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (${errors.length}건)</strong>`;
     
     const btnGroup = document.createElement('div');
     const toggleBtn = document.createElement('button');
@@ -241,15 +242,13 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            // 해당 에러로 묶인 요소 중 화면에 보이는(Visible) 요소를 최우선으로 찾음
-            let targetEl = err.els.find(el => (el.offsetWidth > 0 || el.offsetHeight > 0)) || err.els[0];
-            
-            let scrollTarget = targetEl;
-            const swiperSlide = targetEl.closest('.swiper-slide');
+            let scrollTarget = err.el;
+            const swiperSlide = err.el.closest('.swiper-slide');
             
             if (swiperSlide) {
-                scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
+                // 스와이퍼 구조 붕괴 방지용 포커스 이동
+                scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
+                const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
                 if (swiperInstanceEl && swiperInstanceEl.swiper) {
                     const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
                     if (realIndex !== null) {
@@ -263,19 +262,15 @@
 
             scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // 그룹에 묶인 모든 요소에 하이라이트 효과 적용
-            err.els.forEach(el => {
-                const originalOutline = el.style.outline;
-                el.style.outline = '4px solid blue';
-                setTimeout(() => { el.style.outline = originalOutline; }, 1500);
-            });
+            const originalOutline = err.el.style.outline;
+            err.el.style.outline = '4px solid blue';
+            setTimeout(() => { err.el.style.outline = originalOutline; }, 1500);
         };
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
-        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
         
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} ${textPreview}`;
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${textPreview}`;
         list.appendChild(li);
     });
 
