@@ -11,9 +11,8 @@
     if(existingTooltip) existingTooltip.remove();
 
     let errors = [];
-    
-    // [수정1] 스와이퍼 복제본(.swiper-slide-duplicate) 검수 제외 추가
-    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate'];
+    let errorSignatures = new Set(); // 중복 에러 판별용 Set 객체
+    const ignoreSelectors = ['#header__navi', '.btn-gotop'];
     const ignoreQuery = ignoreSelectors.join(',');
 
     let requiredOmniPrefix = '';
@@ -40,11 +39,31 @@
     `;
     document.body.appendChild(tooltip);
 
+    // 에러 추가 로직 고도화 (중복 방지 적용)
     const addError = (el, type, msg, textPreview) => {
-        errors.push({ el: el, type: type, msg: msg, text: textPreview });
+        let isClone = false;
+        
+        // 스와이퍼 컨테이너 내부일 경우에만 시그니처 생성 및 중복 확인
+        if (el.closest('.swiper-wrapper, .swiper-container')) {
+            let identifier = el.src || el.innerText.trim() || el.className;
+            let signature = `${type}_${msg}_${identifier}`;
+            
+            if (errorSignatures.has(signature)) {
+                isClone = true; // 이미 기록된 에러와 완전히 동일한 복제본
+            } else {
+                errorSignatures.add(signature);
+            }
+        }
+
+        // 화면상 테두리는 원본, 복제본 상관없이 모두 마킹
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
+
+        // 패널 리스트에는 최초 1회(원본)만 추가
+        if (!isClone) {
+            errors.push({ el: el, type: type, msg: msg, text: textPreview });
+        }
     };
 
     const bindTooltip = (el, hasValue, displayValue, typeLabel, colorSuccess, colorFail) => {
@@ -105,7 +124,6 @@
 
     if (isSamsungDotCom) {
         document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
-            if (li.closest(ignoreQuery)) return; // 배너 영역 중복 슬라이드 패스
             if (li.getAttribute('data-crawling-type') !== 'event-banner') {
                 addError(li, 'CRAWL', 'type="event-banner" 오류/누락', '배너 영역');
             }
@@ -115,7 +133,6 @@
         const attrDateRegex = /^\d{2}\/\d{2}\/\d{4}$/; 
 
         document.querySelectorAll('.pt_header__date').forEach(dateWrap => {
-            if (dateWrap.closest(ignoreQuery)) return;
             const spans = dateWrap.querySelectorAll('span');
             
             if (spans.length >= 1) {
@@ -160,7 +177,6 @@
         });
 
         document.querySelectorAll('.pt_bnf__box').forEach(box => {
-            if (box.closest(ignoreQuery)) return;
             const ul = box.querySelector('ul.pt_bnf__list');
             if (ul) {
                 let ulMsgs = [];
@@ -168,7 +184,6 @@
                 if (ulMsgs.length > 0) addError(ul, 'CRAWL', ulMsgs.join(', '), '혜택 탭 영역');
 
                 ul.querySelectorAll('li').forEach(li => {
-                    if (li.closest(ignoreQuery)) return;
                     li.querySelectorAll('.pt_bnf__eyebrow').forEach(el => {
                         if (el.getAttribute('data-crawling-type') !== 'eyebrow') addError(el, 'CRAWL', 'type="eyebrow" 누락/오류', el.innerText.substring(0,15));
                     });
@@ -234,16 +249,12 @@
         li.onmouseover = () => li.style.backgroundColor = '#f9f9f9';
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
-        // [수정2] 클릭 시 스크롤 및 스와이퍼 구조 붕괴 방지 로직
         li.onclick = () => {
             let scrollTarget = err.el;
             const swiperSlide = err.el.closest('.swiper-slide');
             
             if (swiperSlide) {
-                // 타겟을 스와이퍼 래퍼 밖으로 잡아 구조 붕괴 방지
                 scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                
-                // 스와이퍼 인스턴스에 직접 접근 가능 시 슬라이드 이동
                 const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
                 if (swiperInstanceEl && swiperInstanceEl.swiper) {
                     const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
