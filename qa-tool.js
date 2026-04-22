@@ -10,6 +10,13 @@
     const existingTooltip = document.getElementById('qa-omni-tooltip');
     if(existingTooltip) existingTooltip.remove();
 
+    // 검사 대상 영역 존재 여부 확인
+    const targetWrappers = document.querySelectorAll('.sec_project_wrap');
+    if (targetWrappers.length === 0) {
+        alert('검사 대상 영역(.sec_project_wrap)이 페이지에 존재하지 않습니다.');
+        return;
+    }
+
     let errors = [];
     const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
     const ignoreQuery = ignoreSelectors.join(',');
@@ -17,7 +24,8 @@
     let requiredOmniPrefix = '';
     let isSamsungDotCom = false;
     
-    const headerTitleEl = document.querySelector('h3.pt_header__title');
+    // 타이틀 탐색 범위도 제한
+    const headerTitleEl = document.querySelector('.sec_project_wrap h3.pt_header__title');
     if (headerTitleEl) {
         const titleText = headerTitleEl.innerText;
         if (titleText.includes('삼성닷컴')) {
@@ -42,8 +50,8 @@
         let identifier = '';
         if (el.tagName === 'IMG') {
             let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
-            identifier = rawSrc.split('/').pop().split('?')[0] || 'img_no_src';
-            identifier = identifier.replace(/_pc|_mo/g, ''); 
+            identifier = rawSrc.split('/').pop().split('?')[0] || '이미지';
+            identifier = identifier.replace(/_pc|_mo/gi, ''); 
         } else if (el.tagName === 'A') {
             let rawHref = el.getAttribute('href') || el.href || '';
             identifier = rawHref.split('/').pop().split('?')[0] || el.innerText.trim().substring(0, 15);
@@ -53,11 +61,9 @@
 
         let signature = `${type}_${msg}_${identifier}`;
         
-        let existingGroup = errors.find(e => e.signature === signature);
-        if (existingGroup) {
-            if(!existingGroup.els.includes(el)) existingGroup.els.push(el);
-        } else {
-            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview || identifier });
+        let existing = errors.find(e => e.signature === signature);
+        if (!existing) {
+            errors.push({ signature: signature, el: el, type: type, msg: msg, text: textPreview || identifier });
         }
 
         el.classList.add('qa-error-mark'); 
@@ -115,12 +121,14 @@
         }
     };
 
-    document.querySelectorAll('img').forEach(el => checkElement(el, 'IMG'));
-    document.querySelectorAll('a').forEach(el => checkElement(el, 'A'));
-    document.querySelectorAll('button').forEach(el => checkElement(el, 'BUTTON'));
+    // 일반 마크업 검수 범위 제한
+    document.querySelectorAll('.sec_project_wrap img').forEach(el => checkElement(el, 'IMG'));
+    document.querySelectorAll('.sec_project_wrap a').forEach(el => checkElement(el, 'A'));
+    document.querySelectorAll('.sec_project_wrap button').forEach(el => checkElement(el, 'BUTTON'));
 
+    // 크롤링 검수 범위 제한
     if (isSamsungDotCom) {
-        document.querySelectorAll('.pt_slide--banner .swiper-wrapper > li').forEach(li => {
+        document.querySelectorAll('.sec_project_wrap .pt_slide--banner .swiper-wrapper > li').forEach(li => {
             if (li.closest(ignoreQuery)) return;
             if (li.getAttribute('data-crawling-type') !== 'event-banner') {
                 addError(li, 'CRAWL', 'type="event-banner" 오류/누락', '배너 영역');
@@ -130,7 +138,7 @@
         const textDateRegex = /^\d{4}\.\d{2}\.\d{2}$/; 
         const attrDateRegex = /^\d{2}\/\d{2}\/\d{4}$/; 
 
-        document.querySelectorAll('.pt_header__date').forEach(dateWrap => {
+        document.querySelectorAll('.sec_project_wrap .pt_header__date').forEach(dateWrap => {
             if (dateWrap.closest(ignoreQuery)) return;
             const spans = dateWrap.querySelectorAll('span');
             
@@ -162,7 +170,7 @@
             }
         });
 
-        document.querySelectorAll('.pt_bnf__box').forEach(box => {
+        document.querySelectorAll('.sec_project_wrap .pt_bnf__box').forEach(box => {
             if (box.closest(ignoreQuery)) return;
             const ul = box.querySelector('ul.pt_bnf__list');
             if (ul) {
@@ -186,13 +194,12 @@
                     const imgs = li.querySelectorAll('img');
                     if (imgs.length > 0) {
                         const hasIconImg = Array.from(imgs).some(img => img.getAttribute('data-crawling-type') === 'icon-img');
-                        // [핵심 변경] 속성이 하나도 없을 경우, 대표로 0번째 이미지 하나에만 에러를 추가하여 중복 카운팅 방지
                         if (!hasIconImg) {
-                            let img = imgs[0];
-                            let rawSrc = img.getAttribute('data-src') || img.getAttribute('src') || img.src || '';
+                            let targetImg = Array.from(imgs).find(img => img.offsetParent !== null) || imgs[0];
+                            let rawSrc = targetImg.getAttribute('data-src') || targetImg.getAttribute('src') || targetImg.src || '';
                             let filename = rawSrc.split('/').pop().split('?')[0] || '아이콘 이미지';
-                            let baseFilename = filename.replace(/_pc|_mo/g, ''); 
-                            addError(img, 'CRAWL', 'type="icon-img" 누락/오류', baseFilename);
+                            let baseFilename = filename.replace(/_pc|_mo/gi, ''); 
+                            addError(targetImg, 'CRAWL', 'type="icon-img" 누락/오류', baseFilename);
                         }
                     }
                 });
@@ -212,7 +219,7 @@
     const panel = document.createElement('div');
     panel.id = 'qa-bookmarklet-panel';
     Object.assign(panel.style, {
-        position: 'fixed', top: '15px', right: '15px', width: '330px', 
+        position: 'fixed', top: '15px', right: '15px', width: '320px', 
         backgroundColor: '#fff', border: '1px solid #ccc',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: '999998', padding: '15px',
         fontFamily: 'sans-serif', fontSize: '13px', color: '#333'
@@ -220,8 +227,7 @@
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;';
-    const totalEls = errors.reduce((acc, err) => acc + err.els.length, 0);
-    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (유형 ${errors.length}건 / 총 ${totalEls}개)</strong>`;
+    header.innerHTML = `<strong style="font-size:14px;color:#d32f2f;">QA 결과 (${errors.length}건)</strong>`;
     
     const btnGroup = document.createElement('div');
     const toggleBtn = document.createElement('button');
@@ -245,64 +251,4 @@
     errors.forEach((err) => {
         const li = document.createElement('li');
         li.style.cssText = 'border-bottom:1px solid #f5f5f5; padding:8px 0; cursor:pointer;';
-        li.onmouseover = () => li.style.backgroundColor = '#f9f9f9';
-        li.onmouseout = () => li.style.backgroundColor = 'transparent';
-
-        li.onclick = () => {
-            if (typeof err.clickIndex === 'undefined') err.clickIndex = 0;
-            let targetEl = err.els[err.clickIndex % err.els.length];
-            err.clickIndex++; 
-
-            let scrollTarget = targetEl;
-            const swiperSlide = targetEl.closest('.swiper-slide');
-            
-            if (swiperSlide) {
-                scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
-                if (swiperInstanceEl && swiperInstanceEl.swiper) {
-                    const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
-                    if (realIndex !== null) {
-                        swiperInstanceEl.swiper.slideToLoop(parseInt(realIndex));
-                    } else {
-                        const slides = Array.from(swiperSlide.parentNode.children).filter(el => el.classList.contains('swiper-slide') && !el.classList.contains('swiper-slide-duplicate'));
-                        swiperInstanceEl.swiper.slideTo(slides.indexOf(swiperSlide));
-                    }
-                }
-            }
-
-            scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            const originalOutline = targetEl.style.outline;
-            targetEl.style.outline = '4px solid blue';
-            setTimeout(() => { targetEl.style.outline = originalOutline; }, 1500);
-        };
-
-        const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
-        const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
-        const countBadge = err.els.length > 1 ? `<span style="color:#ff9800;font-size:11px;margin-left:5px;">(${err.els.length}개 위치)</span>` : '';
-        
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${countBadge} <br/>${textPreview}`;
-        list.appendChild(li);
-    });
-
-    listWrapper.appendChild(list);
-    panel.appendChild(listWrapper);
-    document.body.appendChild(panel);
-
-    let isMinimized = false;
-    toggleBtn.onclick = function() {
-        isMinimized = !isMinimized;
-        listWrapper.style.display = isMinimized ? 'none' : 'block';
-        toggleBtn.innerText = isMinimized ? '펼치기' : '최소화';
-    };
-
-    closeBtn.onclick = function() {
-        panel.remove();
-        document.querySelectorAll('.qa-error-mark').forEach(el => {
-            el.style.outline = '';
-            el.classList.remove('qa-error-mark');
-        });
-        const t = document.getElementById('qa-omni-tooltip');
-        if(t) t.remove();
-    };
-})();
+        li.onmouseover = ()
