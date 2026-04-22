@@ -251,4 +251,56 @@
     errors.forEach((err) => {
         const li = document.createElement('li');
         li.style.cssText = 'border-bottom:1px solid #f5f5f5; padding:8px 0; cursor:pointer;';
-        li.onmouseover = ()
+        li.onmouseover = () => li.style.backgroundColor = '#f9f9f9';
+        li.onmouseout = () => li.style.backgroundColor = 'transparent';
+
+        li.onclick = () => {
+            let scrollTarget = err.el;
+            const swiperSlide = err.el.closest('.swiper-slide');
+            
+            if (swiperSlide) {
+                scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
+                const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
+                if (swiperInstanceEl && swiperInstanceEl.swiper) {
+                    const slides = Array.from(swiperInstanceEl.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)'));
+                    let originalSlide = slides.find(s => s.contains(err.el)) || swiperSlide;
+                    let idx = slides.indexOf(originalSlide);
+                    if(idx > -1) swiperInstanceEl.swiper.slideTo(idx);
+                }
+            }
+
+            scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            const originalOutline = err.el.style.outline;
+            err.el.style.outline = '4px solid blue';
+            setTimeout(() => { err.el.style.outline = originalOutline; }, 1500);
+        };
+
+        const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
+        const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
+        
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> <br/>${textPreview}`;
+        list.appendChild(li);
+    });
+
+    listWrapper.appendChild(list);
+    panel.appendChild(listWrapper);
+    document.body.appendChild(panel);
+
+    let isMinimized = false;
+    toggleBtn.onclick = function() {
+        isMinimized = !isMinimized;
+        listWrapper.style.display = isMinimized ? 'none' : 'block';
+        toggleBtn.innerText = isMinimized ? '펼치기' : '최소화';
+    };
+
+    closeBtn.onclick = function() {
+        panel.remove();
+        document.querySelectorAll('.qa-error-mark').forEach(el => {
+            el.style.outline = '';
+            el.classList.remove('qa-error-mark');
+        });
+        const t = document.getElementById('qa-omni-tooltip');
+        if(t) t.remove();
+    };
+})();
