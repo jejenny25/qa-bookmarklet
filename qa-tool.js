@@ -13,7 +13,7 @@
     // 검사 대상 영역 존재 여부 확인
     const targetWrappers = document.querySelectorAll('.sec_project_wrap');
     if (targetWrappers.length === 0) {
-        alert('검사 대상 영역(.sec_project_wrap)이 페이지에 존재하지 않습니다.');
+        alert('검사 대상 영역이 페이지에 존재하지 않습니다.');
         return;
     }
 
