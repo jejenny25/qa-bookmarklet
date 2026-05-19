@@ -10,7 +10,6 @@
     const existingTooltip = document.getElementById('qa-omni-tooltip');
     if(existingTooltip) existingTooltip.remove();
 
-    // 검사 대상 영역 존재 여부 확인
     const targetWrappers = document.querySelectorAll('.sec_project_wrap');
     if (targetWrappers.length === 0) {
         alert('검사 대상 영역이 페이지에 존재하지 않습니다.');
@@ -18,7 +17,8 @@
     }
 
     let errors = [];
-    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '[class*="duplicate"]', '[class*="clone"]'];
+    // [핵심 변경] 스와이퍼 복제본 무시 로직 삭제. 이제 모든 슬라이드에서 툴팁/테두리가 정상 작동함.
+    const ignoreSelectors = ['#header__navi', '.btn-gotop'];
     const ignoreQuery = ignoreSelectors.join(',');
 
     let requiredOmniPrefix = '';
@@ -60,11 +60,13 @@
 
         let signature = `${type}_${msg}_${identifier}`;
         
+        // 동일한 식별자 에러가 없을 때만 리스트에 추가 (완벽한 중복 방지)
         let existing = errors.find(e => e.signature === signature);
         if (!existing) {
             errors.push({ signature: signature, el: el, type: type, msg: msg, text: textPreview || identifier });
         }
 
+        // 하지만 빨간 테두리는 원본/복제본 모두에게 부여하여 직관성 유지
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
@@ -145,7 +147,6 @@
 
         document.querySelectorAll('.sec_project_wrap .pt_header__date').forEach(dateWrap => {
             if (dateWrap.closest(ignoreQuery)) return;
-            // [수정] 숫자가 포함된 span만 필터링 (물결 등 제외)
             const dateSpans = Array.from(dateWrap.querySelectorAll('span')).filter(span => /\d/.test(span.innerText));
             
             if (dateSpans.length >= 1) {
