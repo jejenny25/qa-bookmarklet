@@ -18,13 +18,12 @@
     }
 
     let errors = [];
-    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '.slick-cloned'];
+    const ignoreSelectors = ['#header__navi', '.btn-gotop', '.swiper-slide-duplicate', '[class*="duplicate"]', '[class*="clone"]'];
     const ignoreQuery = ignoreSelectors.join(',');
 
     let requiredOmniPrefix = '';
     let isSamsungDotCom = false;
     
-    // 타이틀 탐색 범위도 제한
     const headerTitleEl = document.querySelector('.sec_project_wrap h3.pt_header__title');
     if (headerTitleEl) {
         const titleText = headerTitleEl.innerText;
@@ -117,16 +116,24 @@
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
                 addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
             }
-            bindTooltip(el, hasValue, hasValue ? omniValue : '값 없음', 'OMNI', '#1e3799', '#e55039');
+
+            // OMNI 툴팁 내용 설정 (실제 URL 포함 여부 확인)
+            let displayValue = hasValue ? omniValue : '값 없음';
+            if (type === 'A') {
+                let hrefValue = el.getAttribute('href');
+                if (hrefValue && hrefValue !== '#' && hrefValue !== 'javascript:;' && !hrefValue.startsWith('javascript:void')) {
+                    displayValue += `<br><span style="display:block; margin-top:5px; font-size:12px; font-weight:400; color:#bbdefb; line-height:1.2;">🔗 ${hrefValue}</span>`;
+                }
+            }
+
+            bindTooltip(el, hasValue, displayValue, 'OMNI', '#1e3799', '#e55039');
         }
     };
 
-    // 일반 마크업 검수 범위 제한
     document.querySelectorAll('.sec_project_wrap img').forEach(el => checkElement(el, 'IMG'));
     document.querySelectorAll('.sec_project_wrap a').forEach(el => checkElement(el, 'A'));
     document.querySelectorAll('.sec_project_wrap button').forEach(el => checkElement(el, 'BUTTON'));
 
-    // 크롤링 검수 범위 제한
     if (isSamsungDotCom) {
         document.querySelectorAll('.sec_project_wrap .pt_slide--banner .swiper-wrapper > li').forEach(li => {
             if (li.closest(ignoreQuery)) return;
