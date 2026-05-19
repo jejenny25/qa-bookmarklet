@@ -116,8 +116,7 @@
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
                 addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
             }
-
-            // OMNI 툴팁 내용 설정 (실제 URL 포함 여부 확인)
+            
             let displayValue = hasValue ? omniValue : '값 없음';
             if (type === 'A') {
                 let hrefValue = el.getAttribute('href');
@@ -125,7 +124,6 @@
                     displayValue += `<br><span style="display:block; margin-top:5px; font-size:12px; font-weight:400; color:#bbdefb; line-height:1.2;">🔗 ${hrefValue}</span>`;
                 }
             }
-
             bindTooltip(el, hasValue, displayValue, 'OMNI', '#1e3799', '#e55039');
         }
     };
@@ -147,10 +145,11 @@
 
         document.querySelectorAll('.sec_project_wrap .pt_header__date').forEach(dateWrap => {
             if (dateWrap.closest(ignoreQuery)) return;
-            const spans = dateWrap.querySelectorAll('span');
+            // [수정] 숫자가 포함된 span만 필터링 (물결 등 제외)
+            const dateSpans = Array.from(dateWrap.querySelectorAll('span')).filter(span => /\d/.test(span.innerText));
             
-            if (spans.length >= 1) {
-                const startSpan = spans[0];
+            if (dateSpans.length >= 1) {
+                const startSpan = dateSpans[0];
                 const startVal = startSpan.getAttribute('data-start-date');
                 const startText = startSpan.innerText.trim();
                 
@@ -162,8 +161,8 @@
                     if (startVal !== `${d}/${m}/${y}`) addError(startSpan, 'CRAWL', `data-start-date 불일치 (기대값: ${d}/${m}/${y})`, startVal);
                 }
             }
-            if (spans.length >= 2) {
-                const endSpan = spans[1];
+            if (dateSpans.length >= 2) {
+                const endSpan = dateSpans[1];
                 const endVal = endSpan.getAttribute('data-end-date');
                 const endText = endSpan.innerText.trim();
                 
