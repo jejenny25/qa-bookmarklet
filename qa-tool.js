@@ -17,7 +17,6 @@
     }
 
     let errors = [];
-    // [핵심 변경] 스와이퍼 복제본 무시 로직 삭제. 이제 모든 슬라이드에서 툴팁/테두리가 정상 작동함.
     const ignoreSelectors = ['#header__navi', '.btn-gotop'];
     const ignoreQuery = ignoreSelectors.join(',');
 
@@ -50,7 +49,10 @@
         if (el.tagName === 'IMG') {
             let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
             identifier = rawSrc.split('/').pop().split('?')[0] || '이미지';
-            identifier = identifier.replace(/_pc|_mo/gi, ''); 
+            // [핵심 수정] CRAWL 검사일 때만 _pc, _mo를 하나로 병합. ALT 검사는 분리하여 별도로 취급.
+            if (type === 'CRAWL') {
+                identifier = identifier.replace(/_pc|_mo/gi, ''); 
+            }
         } else if (el.tagName === 'A') {
             let rawHref = el.getAttribute('href') || el.href || '';
             identifier = rawHref.split('/').pop().split('?')[0] || el.innerText.trim().substring(0, 15);
@@ -60,13 +62,15 @@
 
         let signature = `${type}_${msg}_${identifier}`;
         
-        // 동일한 식별자 에러가 없을 때만 리스트에 추가 (완벽한 중복 방지)
         let existing = errors.find(e => e.signature === signature);
-        if (!existing) {
-            errors.push({ signature: signature, el: el, type: type, msg: msg, text: textPreview || identifier });
+        if (existing) {
+            // [핵심 수정] 동일한 에러를 가진 요소들을 배열(els)에 모두 수집하여 클릭 시 순환 이동하도록 복구
+            if (!existing.els.includes(el)) existing.els.push(el);
+        } else {
+            errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview || identifier });
         }
 
-        // 하지만 빨간 테두리는 원본/복제본 모두에게 부여하여 직관성 유지
+        // 배열 추가 여부와 관계없이 탐지된 모든 에러 요소에 즉각적으로 빨간 테두리 부여
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
@@ -262,31 +266,43 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            let scrollTarget = err.el;
-            const swiperSlide = err.el.closest('.swiper-slide');
+            // [핵심 수정] 패널을 클릭할 때마다 수집된 요소(els) 배열을 순회하며 다음 타겟을 찾음
+            if (typeof err.clickIndex === 'undefined') err.clickIndex = 0;
+            let targetEl = err.els[err.clickIndex % err.els.length];
+            err.clickIndex++; 
+
+            let scrollTarget = targetEl;
+            const swiperSlide = targetEl.closest('.swiper-slide');
             
             if (swiperSlide) {
-                scrollTarget = err.el.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
-                const swiperInstanceEl = err.el.closest('.swiper, .swiper-container');
+                scrollTarget = targetEl.closest('.swiper, .swiper-container') || swiperSlide.parentNode;
+                const swiperInstanceEl = targetEl.closest('.swiper, .swiper-container');
+                
                 if (swiperInstanceEl && swiperInstanceEl.swiper) {
-                    const slides = Array.from(swiperInstanceEl.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)'));
-                    let originalSlide = slides.find(s => s.contains(err.el)) || swiperSlide;
-                    let idx = slides.indexOf(originalSlide);
-                    if(idx > -1) swiperInstanceEl.swiper.slideTo(idx);
+                    const realIndex = swiperSlide.getAttribute('data-swiper-slide-index');
+                    if (realIndex !== null) {
+                        swiperInstanceEl.swiper.slideToLoop(parseInt(realIndex));
+                    } else {
+                        const slides = Array.from(swiperSlide.parentNode.children).filter(el => el.classList.contains('swiper-slide'));
+                        const idx = slides.indexOf(swiperSlide);
+                        if(idx > -1) swiperInstanceEl.swiper.slideTo(idx);
+                    }
                 }
             }
 
-            scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            const originalOutline = err.el.style.outline;
-            err.el.style.outline = '4px solid blue';
-            setTimeout(() => { err.el.style.outline = originalOutline; }, 1500);
+            setTimeout(() => {
+                scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const originalOutline = targetEl.style.outline;
+                targetEl.style.outline = '4px solid blue';
+                setTimeout(() => { targetEl.style.outline = originalOutline; }, 1500);
+            }, 100);
         };
 
         const tagBadge = `<span style="display:inline-block;padding:2px 5px;background:#333;color:#fff;border-radius:3px;font-size:11px;margin-right:5px;">${err.type}</span>`;
         const textPreview = err.text ? `<div style="color:#666;font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">"${err.text}"</div>` : '';
+        const clickIndicator = err.els.length > 1 ? `<span style="color:#2196f3;font-size:11px;margin-left:5px;">(클릭 시 순환)</span>` : '';
         
-        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> <br/>${textPreview}`;
+        li.innerHTML = `${tagBadge} <span style="font-weight:bold;">${err.msg}</span> ${clickIndicator}<br/>${textPreview}`;
         list.appendChild(li);
     });
 
