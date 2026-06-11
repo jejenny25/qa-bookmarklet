@@ -110,9 +110,11 @@
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
-            // [핵심 변경] pt_faq 클래스 내부의 A태그는 title 속성 검사 생략
+            // [핵심 로직] 자신이나 직계 부모에 data-tab-idx가 있는지 확인하여 탭 버튼 식별
+            const isTabBtn = el.hasAttribute('data-tab-idx') || (el.parentElement && el.parentElement.hasAttribute('data-tab-idx'));
+
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
-                if (!el.closest('.pt_faq')) {
+                if (!el.closest('.pt_faq') && !isTabBtn) {
                     addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
                 }
             }
@@ -121,7 +123,9 @@
             let hasValue = omniValue && omniValue.trim() !== '';
             
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
-                addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
+                if (!isTabBtn) {
+                    addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
+                }
             }
             
             let displayValue = hasValue ? omniValue : '값 없음';
