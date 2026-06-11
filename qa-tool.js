@@ -49,7 +49,6 @@
         if (el.tagName === 'IMG') {
             let rawSrc = el.getAttribute('data-src') || el.getAttribute('src') || el.src || '';
             identifier = rawSrc.split('/').pop().split('?')[0] || '이미지';
-            // [핵심 수정] CRAWL 검사일 때만 _pc, _mo를 하나로 병합. ALT 검사는 분리하여 별도로 취급.
             if (type === 'CRAWL') {
                 identifier = identifier.replace(/_pc|_mo/gi, ''); 
             }
@@ -64,13 +63,11 @@
         
         let existing = errors.find(e => e.signature === signature);
         if (existing) {
-            // [핵심 수정] 동일한 에러를 가진 요소들을 배열(els)에 모두 수집하여 클릭 시 순환 이동하도록 복구
             if (!existing.els.includes(el)) existing.els.push(el);
         } else {
             errors.push({ signature: signature, els: [el], type: type, msg: msg, text: textPreview || identifier });
         }
 
-        // 배열 추가 여부와 관계없이 탐지된 모든 에러 요소에 즉각적으로 빨간 테두리 부여
         el.classList.add('qa-error-mark'); 
         el.style.outline = '3px dashed red';
         el.style.outlineOffset = '-3px';
@@ -113,14 +110,22 @@
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
+            // [핵심 로직] 자신이나 직계 부모에 data-tab-idx가 있는지 확인하여 탭 버튼 식별
+            const isTabBtn = el.hasAttribute('data-tab-idx') || (el.parentElement && el.parentElement.hasAttribute('data-tab-idx'));
+
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
-                addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
+                if (!el.closest('.pt_faq') && !isTabBtn) {
+                    addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
+                }
             }
+            
             let omniValue = el.getAttribute('data-omni');
             let hasValue = omniValue && omniValue.trim() !== '';
             
             if (hasValue && requiredOmniPrefix && !omniValue.startsWith(requiredOmniPrefix)) {
-                addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
+                if (!isTabBtn) {
+                    addError(el, 'OMNI', `접두어 오류 (필수: ${requiredOmniPrefix})`, el.innerText.substring(0, 20));
+                }
             }
             
             let displayValue = hasValue ? omniValue : '값 없음';
@@ -266,7 +271,6 @@
         li.onmouseout = () => li.style.backgroundColor = 'transparent';
 
         li.onclick = () => {
-            // [핵심 수정] 패널을 클릭할 때마다 수집된 요소(els) 배열을 순회하며 다음 타겟을 찾음
             if (typeof err.clickIndex === 'undefined') err.clickIndex = 0;
             let targetEl = err.els[err.clickIndex % err.els.length];
             err.clickIndex++; 
