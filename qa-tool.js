@@ -110,11 +110,11 @@
             bindTooltip(el, hasValue, hasValue ? altValue : '값 없음', 'ALT', '#009432', '#e55039');
         } 
         else if (type === 'A' || type === 'BUTTON') {
-            // [핵심 로직] 자신이나 직계 부모에 data-tab-idx가 있는지 확인하여 탭 버튼 식별
             const isTabBtn = el.hasAttribute('data-tab-idx') || (el.parentElement && el.parentElement.hasAttribute('data-tab-idx'));
 
             if (type === 'A' && (!el.hasAttribute('title') || el.getAttribute('title').trim() === '')) {
-                if (!el.closest('.pt_faq') && !isTabBtn) {
+                // [수정] .sec_notice 내부의 A 태그도 title 검사에서 제외
+                if (!el.closest('.pt_faq') && !el.closest('.sec_notice') && !isTabBtn) {
                     addError(el, 'A', 'title 누락/빈 값', el.innerText.substring(0, 20));
                 }
             }
